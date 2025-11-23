@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Map from '../components/Map';
 import { socket } from '../services/socket';
 import { Marker, Popup, Polygon } from 'react-leaflet';
-import { AlertTriangle, Shield, Map as MapIcon, Users } from 'lucide-react';
+import { AlertTriangle, Shield, Map as MapIcon, Users, Search } from 'lucide-react';
 
 const AdminDashboard = () => {
     const [geofences, setGeofences] = useState([]);
@@ -10,6 +10,14 @@ const AdminDashboard = () => {
     const [alerts, setAlerts] = useState([]);
     const [isDrawing, setIsDrawing] = useState(false);
     const [newGeofencePoints, setNewGeofencePoints] = useState([]);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [suggestions, setSuggestions] = useState([]);
+    const [mapCenter, setMapCenter] = useState(null);
+    const [mapZoom, setMapZoom] = useState(13);
+    const [showModal, setShowModal] = useState(false);
+    const [manualCoords, setManualCoords] = useState("");
+    const [zoneName, setZoneName] = useState("");
+    const [zoneType, setZoneType] = useState("safe");
 
     useEffect(() => {
         // Initial fetch
@@ -39,23 +47,98 @@ const AdminDashboard = () => {
         }
     };
 
-    const saveGeofence = async () => {
+    const openSaveModal = () => {
         if (newGeofencePoints.length < 3) return alert("Need at least 3 points");
-        const name = prompt("Enter Geofence Name (e.g., Danger Zone 1):");
-        const type = confirm("Is this a Danger Zone? (Cancel for Safe Zone)") ? "danger" : "safe";
+        setManualCoords(newGeofencePoints.map(p => `${p[0]}, ${p[1]}`).join('\n'));
+        setShowModal(true);
+    };
+
+    useEffect(() => {
+        const delayDebounceFn = setTimeout(async () => {
+            if (searchQuery.length > 2) {
+                try {
+                    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`);
+                    const data = await res.json();
+                    setSuggestions(data);
+                } catch (err) {
+                    console.error("Search error:", err);
+                }
+            } else {
+                setSuggestions([]);
+            }
+        }, 500);
+
+        return () => clearTimeout(delayDebounceFn);
+    }, [searchQuery]);
+
+    const handleSelectLocation = (lat, lon, displayName) => {
+        setMapCenter([parseFloat(lat), parseFloat(lon)]);
+        setMapZoom(16); // Zoom in closer for specific location
+        setSearchQuery(displayName); // Optional: update input
+        setSuggestions([]); // Clear suggestions
+    };
+
+    const handleSearch = (e) => {
+        e.preventDefault();
+        // Fallback or explicit enter press
+        if (suggestions.length > 0) {
+            handleSelectLocation(suggestions[0].lat, suggestions[0].lon, suggestions[0].display_name);
+        }
+    };
+
+    const saveGeofence = async () => {
+        if (!zoneName) return alert("Name is required");
+
+        // Parse manual coords if changed
+        let points = [];
+        try {
+            points = manualCoords.trim().split('\n').map(line => {
+                const [lat, lng] = line.split(',').map(n => parseFloat(n.trim()));
+                if (isNaN(lat) || isNaN(lng)) throw new Error("Invalid number");
+                return [lat, lng];
+            });
+        } catch (e) {
+            return alert("Invalid coordinates format. Use 'lat, lng' per line.");
+        }
+
+        if (points.length < 3) return alert("Need at least 3 points");
 
         await fetch('http://localhost:3000/api/geofences', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                name,
-                type,
-                points: newGeofencePoints
+                name: zoneName,
+                type: zoneType,
+                points: points
             })
         });
 
         setNewGeofencePoints([]);
         setIsDrawing(false);
+        setShowModal(false);
+        setZoneName("");
+        setManualCoords("");
+    };
+
+    const deleteGeofence = async (id) => {
+        console.log("Attempting to delete geofence:", id);
+        if (!confirm("Are you sure you want to delete this zone?")) return;
+        try {
+            const res = await fetch(`http://localhost:3000/api/geofences/${id}`, {
+                method: 'DELETE'
+            });
+            const data = await res.json();
+            console.log("Delete response:", data);
+            if (data.success) {
+                // Optional: Force a refresh if socket doesn't work
+                // setGeofences(prev => prev.filter(g => g.id !== id));
+            } else {
+                alert("Failed to delete zone");
+            }
+        } catch (err) {
+            console.error("Delete error:", err);
+            alert("Error deleting zone");
+        }
     };
 
     return (
@@ -66,6 +149,34 @@ const AdminDashboard = () => {
                     <h1 className="text-xl font-bold flex items-center gap-2">
                         <Shield size={24} /> Admin Monitor
                     </h1>
+                </div>
+
+                <div className="p-4 border-b relative">
+                    <form onSubmit={handleSearch} className="flex gap-2">
+                        <input
+                            type="text"
+                            placeholder="Search location..."
+                            className="flex-1 p-2 border rounded text-sm"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                        <button type="submit" className="bg-blue-600 text-white p-2 rounded hover:bg-blue-700">
+                            <Search size={16} />
+                        </button>
+                    </form>
+                    {suggestions.length > 0 && (
+                        <div className="absolute left-4 right-4 top-full bg-white border shadow-lg rounded-b z-50 max-h-60 overflow-y-auto">
+                            {suggestions.map((item) => (
+                                <div
+                                    key={item.place_id}
+                                    className="p-2 hover:bg-gray-100 cursor-pointer text-sm border-b last:border-b-0"
+                                    onClick={() => handleSelectLocation(item.lat, item.lon, item.display_name)}
+                                >
+                                    {item.display_name}
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 <div className="p-4 flex-1 overflow-y-auto">
@@ -114,7 +225,7 @@ const AdminDashboard = () => {
                         ) : (
                             <div className="flex gap-2">
                                 <button
-                                    onClick={saveGeofence}
+                                    onClick={openSaveModal}
                                     className="flex-1 bg-green-600 text-white py-2 rounded hover:bg-green-700"
                                 >
                                     Save
@@ -130,13 +241,122 @@ const AdminDashboard = () => {
                         {isDrawing && (
                             <p className="text-xs text-gray-500 mt-2">Click on map to add points.</p>
                         )}
+
+                        <div className="mt-4 pt-4 border-t">
+                            <button
+                                onClick={() => {
+                                    setIsDrawing(false);
+                                    setNewGeofencePoints([]);
+                                    setManualCoords("");
+                                    setShowModal(true);
+                                }}
+                                className="w-full bg-gray-700 text-white py-2 rounded hover:bg-gray-800 text-sm"
+                            >
+                                Add Manually (Coords)
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Zone List Section */}
+                    <div className="mt-6 border-t pt-4">
+                        <h2 className="text-lg font-semibold mb-2 flex items-center gap-2 text-purple-600">
+                            <MapIcon size={20} /> Zones ({geofences.length})
+                        </h2>
+                        {geofences.length === 0 && <p className="text-gray-500 text-sm">No zones created.</p>}
+                        <div className="space-y-2">
+                            {geofences.map(geo => (
+                                <div key={geo.id} className="bg-gray-50 p-2 rounded text-sm flex justify-between items-center border-l-4" style={{ borderColor: geo.type === 'danger' ? '#ef4444' : '#22c55e' }}>
+                                    <div>
+                                        <p className="font-bold">{geo.name || "Unnamed Zone"}</p>
+                                        <p className="text-xs text-gray-500 capitalize">{geo.type}</p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => {
+                                                if (geo.points && geo.points.length > 0) {
+                                                    setMapCenter(geo.points[0]);
+                                                    setMapZoom(16);
+                                                }
+                                            }}
+                                            className="text-blue-600 hover:text-blue-800 text-xs"
+                                        >
+                                            View
+                                        </button>
+                                        <button
+                                            onClick={() => deleteGeofence(geo.id)}
+                                            className="text-red-600 hover:text-red-800 text-xs font-bold"
+                                        >
+                                            Delete
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 </div>
             </div>
 
+            {/* Modal */}
+            {showModal && (
+                <div className="fixed inset-0 bg-black/50 z-[1000] flex items-center justify-center">
+                    <div className="bg-white p-6 rounded-lg w-96 shadow-xl">
+                        <h2 className="text-xl font-bold mb-4">Save Geofence</h2>
+
+                        <div className="mb-4">
+                            <label className="block text-sm font-medium mb-1">Zone Name</label>
+                            <input
+                                type="text"
+                                className="w-full border p-2 rounded"
+                                value={zoneName}
+                                onChange={(e) => setZoneName(e.target.value)}
+                                placeholder="e.g. Central Park"
+                            />
+                        </div>
+
+                        <div className="mb-4">
+                            <label className="block text-sm font-medium mb-1">Zone Type</label>
+                            <select
+                                className="w-full border p-2 rounded"
+                                value={zoneType}
+                                onChange={(e) => setZoneType(e.target.value)}
+                            >
+                                <option value="safe">Safe Zone (Green)</option>
+                                <option value="danger">Danger Zone (Red)</option>
+                            </select>
+                        </div>
+
+                        <div className="mb-4">
+                            <label className="block text-sm font-medium mb-1">Coordinates (Lat, Lng)</label>
+                            <textarea
+                                className="w-full border p-2 rounded h-32 text-xs font-mono"
+                                value={manualCoords}
+                                onChange={(e) => setManualCoords(e.target.value)}
+                                placeholder="12.34, 56.78&#10;12.35, 56.79&#10;..."
+                            />
+                            <p className="text-xs text-gray-500 mt-1">Enter one coordinate pair per line.</p>
+                        </div>
+
+                        <div className="flex gap-2 justify-end">
+                            <button
+                                onClick={() => setShowModal(false)}
+                                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={saveGeofence}
+                                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                            >
+                                Save Zone
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Map Area */}
             <div className="flex-1 relative">
-                <Map onClick={handleMapClick}>
+                <Map onClick={handleMapClick} center={mapCenter} zoom={mapZoom}>
                     {/* Render Geofences */}
                     {geofences.map(geo => (
                         <Polygon
@@ -148,7 +368,18 @@ const AdminDashboard = () => {
                                 fillOpacity: 0.4
                             }}
                         >
-                            <Popup>{geo.name} ({geo.type})</Popup>
+                            <Popup>
+                                <div className="text-center">
+                                    <p className="font-bold">{geo.name}</p>
+                                    <p className="text-xs uppercase mb-2">{geo.type}</p>
+                                    <button
+                                        onClick={() => deleteGeofence(geo.id)}
+                                        className="bg-red-500 text-white px-2 py-1 rounded text-xs hover:bg-red-600"
+                                    >
+                                        Delete Zone
+                                    </button>
+                                </div>
+                            </Popup>
                         </Polygon>
                     ))}
 

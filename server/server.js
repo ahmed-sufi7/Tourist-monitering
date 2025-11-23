@@ -66,8 +66,12 @@ app.post('/api/geofences', (req, res) => {
 });
 
 // Delete geofence
+// Delete geofence
 app.delete('/api/geofences/:id', (req, res) => {
+    console.log("Deleting geofence with ID:", req.params.id);
+    const initialLength = data.geofences.length;
     data.geofences = data.geofences.filter(g => g.id !== req.params.id);
+    console.log(`Deleted ${initialLength - data.geofences.length} items. Remaining: ${data.geofences.length}`);
     saveData();
     io.emit('geofence-update', data.geofences);
     res.json({ success: true });

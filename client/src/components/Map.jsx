@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polygon, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polygon, useMap, LayersControl } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
@@ -24,14 +24,41 @@ const Map = ({ center, zoom, children, onClick }) => {
             style={{ height: '100%', width: '100%' }}
             className="z-0"
         >
-            <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
+            <LayersControl position="topright">
+                <LayersControl.BaseLayer checked name="Detailed (CartoDB)">
+                    <TileLayer
+                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+                        url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                    />
+                </LayersControl.BaseLayer>
+                <LayersControl.BaseLayer name="Standard OSM">
+                    <TileLayer
+                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    />
+                </LayersControl.BaseLayer>
+                <LayersControl.BaseLayer name="Satellite (Esri)">
+                    <TileLayer
+                        attribution='Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+                        url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                    />
+                </LayersControl.BaseLayer>
+            </LayersControl>
             <MapEvents onClick={onClick} />
+            <MapController center={center} zoom={zoom} />
             {children}
         </MapContainer>
     );
+};
+
+const MapController = ({ center, zoom }) => {
+    const map = useMap();
+    useEffect(() => {
+        if (center) {
+            map.flyTo(center, zoom || map.getZoom());
+        }
+    }, [center, zoom, map]);
+    return null;
 };
 
 const MapEvents = ({ onClick }) => {
