@@ -9,29 +9,55 @@ const UserApp = () => {
     const [geofences, setGeofences] = useState([]);
     const [safetyStatus, setSafetyStatus] = useState({ status: 'Unknown', message: 'Waiting for analysis...' });
     const [loadingSafety, setLoadingSafety] = useState(false);
+    const [userData, setUserData] = useState(null);
+    const [formData, setFormData] = useState({ name: '', phone: '' });
 
     useEffect(() => {
+        // Check for existing registration
+        const savedUser = localStorage.getItem('tourist_user');
+        if (savedUser) {
+            setUserData(JSON.parse(savedUser));
+        }
+
         // Initial fetch
         fetch('http://localhost:3000/api/geofences')
             .then(res => res.json())
             .then(data => setGeofences(data));
-
-        socket.emit('register-user', { type: 'tourist' });
-
-        // Watch Location
-        if (navigator.geolocation) {
-            const watchId = navigator.geolocation.watchPosition(
-                (pos) => {
-                    const newLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                    setLocation(newLoc);
-                    socket.emit('location-update', newLoc);
-                },
-                (err) => console.error(err),
-                { enableHighAccuracy: true }
-            );
-            return () => navigator.geolocation.clearWatch(watchId);
-        }
     }, []);
+
+    useEffect(() => {
+        if (userData) {
+            socket.emit('register-user', { ...userData, type: 'tourist' });
+
+            // Watch Location only after registration
+            if (navigator.geolocation) {
+                const watchId = navigator.geolocation.watchPosition(
+                    (pos) => {
+                        const newLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                        setLocation(newLoc);
+                        socket.emit('location-update', newLoc);
+                    },
+                    (err) => console.error(err),
+                    { enableHighAccuracy: true }
+                );
+                return () => navigator.geolocation.clearWatch(watchId);
+            }
+        }
+    }, [userData]);
+
+    const handleRegister = (e) => {
+        e.preventDefault();
+        if (!formData.name || !formData.phone) return alert("Please fill in all fields");
+
+        const user = {
+            name: formData.name,
+            phone: formData.phone,
+            id: Date.now().toString() // Simple ID generation
+        };
+
+        localStorage.setItem('tourist_user', JSON.stringify(user));
+        setUserData(user);
+    };
 
     const sendSOS = () => {
         if (!location) return alert("Location not available yet!");
@@ -57,6 +83,44 @@ const UserApp = () => {
             setLoadingSafety(false);
         }
     };
+
+    if (!userData) {
+        return (
+            <div className="h-screen flex items-center justify-center bg-slate-900 p-4">
+                <div className="bg-white p-8 rounded-xl w-full max-w-md shadow-2xl">
+                    <h1 className="text-2xl font-bold mb-6 text-center text-blue-600">Tourist Registration</h1>
+                    <form onSubmit={handleRegister} className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium mb-1">Full Name</label>
+                            <input
+                                type="text"
+                                className="w-full border p-3 rounded-lg"
+                                placeholder="John Doe"
+                                value={formData.name}
+                                onChange={e => setFormData({ ...formData, name: e.target.value })}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium mb-1">Phone Number</label>
+                            <input
+                                type="tel"
+                                className="w-full border p-3 rounded-lg"
+                                placeholder="+1 234 567 8900"
+                                value={formData.phone}
+                                onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                            />
+                        </div>
+                        <button
+                            type="submit"
+                            className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition"
+                        >
+                            Start Exploring
+                        </button>
+                    </form>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="h-screen flex flex-col relative">

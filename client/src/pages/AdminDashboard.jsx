@@ -141,6 +141,10 @@ const AdminDashboard = () => {
         }
     };
 
+    const dismissAlert = (index) => {
+        setAlerts(prev => prev.filter((_, i) => i !== index));
+    };
+
     return (
         <div className="flex h-screen bg-gray-100">
             {/* Sidebar */}
@@ -187,10 +191,32 @@ const AdminDashboard = () => {
                         </h2>
                         {alerts.length === 0 && <p className="text-gray-500 text-sm">No active alerts</p>}
                         {alerts.map((alert, idx) => (
-                            <div key={idx} className="bg-red-50 border-l-4 border-red-500 p-3 mb-2 text-sm">
-                                <p className="font-bold">SOS from User</p>
-                                <p>ID: {alert.userId.slice(0, 5)}...</p>
-                                <p className="text-xs text-gray-500">{new Date(alert.timestamp).toLocaleTimeString()}</p>
+                            <div key={idx} className="bg-red-50 border-l-4 border-red-500 p-3 mb-2 text-sm shadow-sm">
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <p className="font-bold text-red-700">SOS ALERT</p>
+                                        <p className="font-semibold">{alert.user?.name || "Unknown User"}</p>
+                                        <p className="text-xs text-gray-600">{alert.user?.phone || "No Phone"}</p>
+                                        <p className="text-xs text-gray-400 mt-1">{new Date(alert.timestamp).toLocaleTimeString()}</p>
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            if (alert.location) {
+                                                setMapCenter([alert.location.lat, alert.location.lng]);
+                                                setMapZoom(18);
+                                            }
+                                        }}
+                                        className="bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700 flex items-center gap-1"
+                                    >
+                                        <MapIcon size={12} /> View
+                                    </button>
+                                </div>
+                                <button
+                                    onClick={() => dismissAlert(idx)}
+                                    className="w-full mt-2 bg-gray-200 text-gray-700 py-1 rounded text-xs hover:bg-gray-300"
+                                >
+                                    Dismiss Alert
+                                </button>
                             </div>
                         ))}
                     </div>
@@ -201,10 +227,13 @@ const AdminDashboard = () => {
                             <Users size={20} /> Active Users ({users.length})
                         </h2>
                         {users.map(user => (
-                            <div key={user.id} className="bg-gray-50 p-2 rounded mb-1 text-sm flex justify-between">
-                                <span>User {user.id.slice(0, 5)}...</span>
-                                <span className="text-xs text-gray-500">
-                                    {user.location ? "Online" : "No Loc"}
+                            <div key={user.id} className="bg-gray-50 p-2 rounded mb-1 text-sm flex justify-between items-center">
+                                <div>
+                                    <p className="font-bold">{user.name || `User ${user.id.slice(0, 5)}...`}</p>
+                                    <p className="text-xs text-gray-500">{user.phone || "No Phone"}</p>
+                                </div>
+                                <span className={`text-xs px-2 py-1 rounded-full ${user.location ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-600"}`}>
+                                    {user.location ? "Online" : "Offline"}
                                 </span>
                             </div>
                         ))}
@@ -395,8 +424,13 @@ const AdminDashboard = () => {
                     {users.map(user => user.location && (
                         <Marker key={user.id} position={[user.location.lat, user.location.lng]}>
                             <Popup>
-                                User: {user.id.slice(0, 5)}... <br />
-                                Last Seen: {new Date(user.lastSeen).toLocaleTimeString()}
+                                <div className="text-center">
+                                    <p className="font-bold text-lg">{user.name || "Unknown User"}</p>
+                                    <p className="text-sm text-gray-600">{user.phone}</p>
+                                    <p className="text-xs text-gray-400 mt-1">
+                                        Last Seen: {new Date(user.lastSeen).toLocaleTimeString()}
+                                    </p>
+                                </div>
                             </Popup>
                         </Marker>
                     ))}
