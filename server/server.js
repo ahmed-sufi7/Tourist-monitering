@@ -130,14 +130,23 @@ io.on('connection', (socket) => {
     });
 
     socket.on('location-update', (location) => {
-        if (data.users[socket.id]) {
-            data.users[socket.id].location = location;
-            data.users[socket.id].lastSeen = new Date();
-            io.emit('users-update', Object.values(data.users));
-
-            // Check geofences
-            checkGeofences(socket.id, location);
+        if (!data.users[socket.id]) {
+            // Implicit registration if missing (e.g. after server restart)
+            data.users[socket.id] = {
+                id: socket.id,
+                name: "Reconnect User",
+                phone: "",
+                type: "tourist",
+                lastSeen: new Date()
+            };
         }
+
+        data.users[socket.id].location = location;
+        data.users[socket.id].lastSeen = new Date();
+        io.emit('users-update', Object.values(data.users));
+
+        // Check geofences
+        checkGeofences(socket.id, location);
     });
 
     socket.on('sos-alert', (alertData) => {

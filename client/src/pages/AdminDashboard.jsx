@@ -1,8 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import Map from '../components/Map';
 import { socket } from '../services/socket';
-import { Marker, Popup, Polygon } from 'react-leaflet';
+import { Marker, Popup, Polygon, CircleMarker } from 'react-leaflet';
 import { AlertTriangle, Shield, Map as MapIcon, Users, Search } from 'lucide-react';
+
+// Ray-casting algorithm for point in polygon
+const isPointInPolygon = (point, vs) => {
+    // point = [lat, lng], vs = [[lat, lng], ...]
+    const x = point[0], y = point[1];
+    let inside = false;
+    for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+        const xi = vs[i][0], yi = vs[i][1];
+        const xj = vs[j][0], yj = vs[j][1];
+        const intersect = ((yi > y) !== (yj > y))
+            && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+    }
+    return inside;
+};
 
 const AdminDashboard = () => {
     const [geofences, setGeofences] = useState([]);
@@ -131,7 +146,7 @@ const AdminDashboard = () => {
             console.log("Delete response:", data);
             if (data.success) {
                 // Optional: Force a refresh if socket doesn't work
-                // setGeofences(prev => prev.filter(g => g.id !== id));
+                setGeofences(prev => prev.filter(g => g.id !== id));
             } else {
                 alert("Failed to delete zone");
             }
@@ -143,6 +158,25 @@ const AdminDashboard = () => {
 
     const dismissAlert = (index) => {
         setAlerts(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const getUserStatus = (userLoc) => {
+        if (!userLoc) return 'neutral';
+        const point = [userLoc.lat, userLoc.lng];
+
+        // Check danger zones first
+        const dangerZones = geofences.filter(g => g.type === 'danger');
+        for (let zone of dangerZones) {
+            if (isPointInPolygon(point, zone.points)) return 'danger';
+        }
+
+        // Check safe zones
+        const safeZones = geofences.filter(g => g.type === 'safe');
+        for (let zone of safeZones) {
+            if (isPointInPolygon(point, zone.points)) return 'safe';
+        }
+
+        return 'neutral';
     };
 
     return (
@@ -420,20 +454,41 @@ const AdminDashboard = () => {
                         />
                     )}
 
-                    {/* Render Users */}
-                    {users.map(user => user.location && (
-                        <Marker key={user.id} position={[user.location.lat, user.location.lng]}>
-                            <Popup>
-                                <div className="text-center">
-                                    <p className="font-bold text-lg">{user.name || "Unknown User"}</p>
-                                    <p className="text-sm text-gray-600">{user.phone}</p>
-                                    <p className="text-xs text-gray-400 mt-1">
-                                        Last Seen: {new Date(user.lastSeen).toLocaleTimeString()}
-                                    </p>
-                                </div>
-                            </Popup>
-                        </Marker>
-                    ))}
+                    {/* Render Users as Dots */}
+                    {users.map(user => {
+                        if (!user.location) return null;
+                        const status = getUserStatus(user.location);
+                        let color = '#3b82f6'; // Blue (Neutral)
+                        if (status === 'danger') color = '#ef4444'; // Red
+                        if (status === 'safe') color = '#22c55e'; // Green
+
+                        return (
+                            <CircleMarker
+                                key={user.id}
+                                center={[user.location.lat, user.location.lng]}
+                                radius={8}
+                                pathOptions={{
+                                    color: 'white',
+                                    weight: 2,
+                                    fillColor: color,
+                                    fillOpacity: 1
+                                }}
+                            >
+                                <Popup>
+                                    <div className="text-center">
+                                        <p className="font-bold text-lg">{user.name || "Unknown User"}</p>
+                                        <p className="text-sm text-gray-600">{user.phone}</p>
+                                        <p className="text-xs font-bold uppercase mt-1" style={{ color }}>
+                                            Status: {status}
+                                        </p>
+                                        <p className="text-xs text-gray-400">
+                                            Last Seen: {new Date(user.lastSeen).toLocaleTimeString()}
+                                        </p>
+                                    </div>
+                                </Popup>
+                            </CircleMarker>
+                        );
+                    })}
                 </Map>
             </div>
         </div>

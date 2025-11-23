@@ -27,7 +27,12 @@ const UserApp = () => {
 
     useEffect(() => {
         if (userData) {
-            socket.emit('register-user', { ...userData, type: 'tourist' });
+            const register = () => {
+                socket.emit('register-user', { ...userData, type: 'tourist' });
+            };
+
+            register(); // Initial registration
+            socket.on('connect', register); // Re-register on reconnect
 
             // Watch Location only after registration
             if (navigator.geolocation) {
@@ -40,7 +45,10 @@ const UserApp = () => {
                     (err) => console.error(err),
                     { enableHighAccuracy: true }
                 );
-                return () => navigator.geolocation.clearWatch(watchId);
+                return () => {
+                    navigator.geolocation.clearWatch(watchId);
+                    socket.off('connect', register);
+                };
             }
         }
     }, [userData]);
