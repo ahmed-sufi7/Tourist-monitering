@@ -27,17 +27,17 @@ app.use(express.json());
 let data = { geofences: [], users: {} };
 if (fs.existsSync(DATA_FILE)) {
     try {
-        data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-        // Ensure structure
-        if (!data.geofences) data.geofences = [];
-        if (!data.users) data.users = {};
+        const fileData = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+        // Only load geofences from file, not users (users should only be active connections)
+        if (fileData.geofences) data.geofences = fileData.geofences;
     } catch (err) {
         console.error("Error reading data file:", err);
     }
 }
 
 const saveData = () => {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+    // Only save geofences, not users (users are temporary/session data)
+    fs.writeFileSync(DATA_FILE, JSON.stringify({ geofences: data.geofences }, null, 2));
 };
 
 // Gemini API Setup

@@ -45,9 +45,21 @@ const UserApp = () => {
                     (err) => console.error(err),
                     { enableHighAccuracy: true }
                 );
+
+                // Handle page unload/exit
+                const handleBeforeUnload = () => {
+                    socket.io.opts.reconnection = false;
+                    socket.disconnect();
+                };
+
+                window.addEventListener('beforeunload', handleBeforeUnload);
+
                 return () => {
                     navigator.geolocation.clearWatch(watchId);
                     socket.off('connect', register);
+                    window.removeEventListener('beforeunload', handleBeforeUnload);
+                    socket.io.opts.reconnection = false;
+                    socket.disconnect();
                 };
             }
         }
